@@ -80,6 +80,11 @@ class CSR extends Module {
     io.reg_write_data_ex,
     mepc
   )
+  io.clint_access_bundle.mie := Mux(
+    io.reg_write_enable_ex && io.reg_write_address_ex === CSRRegister.MIE,
+    io.reg_write_data_ex,
+    mie
+  )
 
   when(io.clint_access_bundle.direct_write_enable) {
     mstatus := io.clint_access_bundle.mstatus_write_data

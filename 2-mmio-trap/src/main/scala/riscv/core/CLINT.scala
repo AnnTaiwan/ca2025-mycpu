@@ -25,6 +25,7 @@ class CSRDirectAccessBundle extends Bundle {
   val mepc    = Input(UInt(Parameters.DataWidth))
   val mcause  = Input(UInt(Parameters.DataWidth))
   val mtvec   = Input(UInt(Parameters.DataWidth))
+  val mie     = Input(UInt(Parameters.DataWidth))
 
   val mstatus_write_data = Output(UInt(Parameters.DataWidth))
   val mepc_write_data    = Output(UInt(Parameters.DataWidth))
@@ -65,7 +66,10 @@ class CLINT extends Module {
 
     val csr_bundle = new CSRDirectAccessBundle
   })
-  val interrupt_enable = io.csr_bundle.mstatus(3)
+  val interrupt_enable_global = io.csr_bundle.mstatus(3) // MIE bit (global enable)
+  val interrupt_enable_timer = io.csr_bundle.mie(7)      // MTIE bit (timer enable)
+  val interrupt_enable_external = io.csr_bundle.mie(11)  // MEIE bit (external enable)
+
   val instruction_address = Mux(
     io.jump_flag,
     io.jump_address,
@@ -94,7 +98,15 @@ class CLINT extends Module {
   // Example:
   // - Before: mstatus.MIE=1, mstatus.MPIE=? (don't care)
   // - After:  mstatus.MIE=0, mstatus.MPIE=1 (saved previous enable state)
-  when(io.interrupt_flag =/= InterruptCode.None && interrupt_enable) { // interrupt
+
+  // Check individual interrupt source enable based on interrupt type
+  val interrupt_source_enabled = Mux(
+    io.interrupt_flag === InterruptCode.Timer0,
+    interrupt_enable_timer,
+    interrupt_enable_external
+  )
+
+  when(io.interrupt_flag =/= InterruptCode.None && interrupt_enable_global && interrupt_source_enabled) { // interrupt
     io.interrupt_assert          := true.B
     io.interrupt_handler_address := io.csr_bundle.mtvec
     // TODO: Complete mstatus update logic for interrupt entry

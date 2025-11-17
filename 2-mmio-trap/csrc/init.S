@@ -50,9 +50,11 @@ loop:
 .globl enable_interrupt
 enable_interrupt:
   la t0, __trap_entry
-  csrrw t1, mtvec, t0 # setup trap vector base
+  csrrw t1, mtvec, t0      # setup trap vector base
   li t0, 0x1888
-  csrrw t1, mstatus, t0 # enable interrupt
+  csrrw t1, mstatus, t0    # enable interrupt (set MIE bit)
+  li t0, (1 << 7) | (1 << 11)  # MTIE (bit 7) | MEIE (bit 11)
+  csrs mie, t0             # enable timer + external interrupts
   ret
 .globl enable_paging
 enable_paging:

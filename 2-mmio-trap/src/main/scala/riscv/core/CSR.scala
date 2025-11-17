@@ -150,6 +150,7 @@ class CSR extends Module {
   io.clint_access_bundle.mtvec   := mtvec
   io.clint_access_bundle.mcause  := mcause
   io.clint_access_bundle.mepc    := mepc
+  io.clint_access_bundle.mie     := mie
 
   // ============================================================
   // [CA25: Exercise 11] CSR Write Priority Logic

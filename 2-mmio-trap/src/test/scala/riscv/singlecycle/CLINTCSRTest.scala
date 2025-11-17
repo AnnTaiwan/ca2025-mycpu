@@ -76,6 +76,9 @@ class CLINTCSRTest extends AnyFlatSpec with ChiselScalatestTester {
       c.io.csr_regs_write_address.poke(CSRRegister.MSTATUS)
       c.io.csr_regs_write_data.poke(0x1888L.U)
       c.clock.step()
+      c.io.csr_regs_write_address.poke(CSRRegister.MIE)
+      c.io.csr_regs_write_data.poke(0x888L.U) // MTIE (bit 7) | MEIE (bit 11)
+      c.clock.step()
       c.io.csr_regs_write_enable.poke(false.B)
 
       // handle interrupt when not jumping
