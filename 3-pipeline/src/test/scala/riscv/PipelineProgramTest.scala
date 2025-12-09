@@ -25,6 +25,87 @@ class PipelineProgramTest extends AnyFlatSpec with ChiselScalatestTester {
   for (cfg <- PipelineConfigs.All) {
     behavior.of(cfg.name)
 
+    it should "do uf8_decode/encode from 0-255" in {
+      runProgram("q1-uf8_rv32.asmbin", cfg) { c =>
+      c.clock.setTimeout(0)  // Disable timeout
+        for (i <- 1 to 1000) { // Allow program execution to complete
+          c.clock.step(1000)
+        }
+        for (i <- 0 to 255) { // see each result are they correct or not
+          /*
+          In mem:
+          mem[4] = input, 0
+          mem[8] = encoded result, 0
+          mem[12] = input, 1
+          mem[16] = encoded result, 1
+          ...
+          mem[2052] = test result, 1(pass), 0(fail)
+          */
+          c.io.mem_debug_read_address.poke((4 + i * 8).U)
+          c.clock.step()
+          val input = c.io.mem_debug_read_data.peek().litValue
+
+          c.io.mem_debug_read_address.poke((8 + i * 8).U)  // Encoded results
+          c.clock.step()
+          val encoded = c.io.mem_debug_read_data.peek().litValue
+
+          // Print values
+          // if (i > 250)
+            // println(f"Iteration $i%3d: input=0x$input%02x ($input%3d), encoded=0x$encoded%02x ($encoded%3d)")
+
+          // compare, it should be the same
+          assert(input == encoded, s", Iteration $i: (input=$input) != (encoded=$encoded)")
+        }
+        c.io.mem_debug_read_address.poke(2052.U)
+        c.clock.step()
+        val testResult = c.io.mem_debug_read_data.peek().litValue
+        c.io.mem_debug_read_data.expect(1.U, s", UF8 Test failed: result=$testResult") // it should pass.
+
+        // see if x9(s1) is 1 or not
+        c.io.regs_debug_read_address.poke(9.U)
+        c.io.regs_debug_read_data.expect(1.U)
+      }
+    }
+
+    it should "do fast_rsqrt" in {
+      runProgram("fast_rsqrt.asmbin", cfg) { c =>
+      c.clock.setTimeout(0)  // Disable timeout
+        for (i <- 1 to 250) { // Allow program execution to complete
+          c.clock.step(1000)
+        }
+        val arr = Array( 
+          65536,
+          32768,
+          16384,
+          14654,
+          6553,
+          4080,
+          2570
+        )
+        for (i <- 0 until arr.length) { // see each result are they correct or not
+          /*
+          In mem:
+          mem[4] = test result, 1(pass), 0(fail)
+          mem[8] = result 1
+          mem[12] = result 2
+          mem[16] = result 3
+          ...
+          */
+          c.io.mem_debug_read_address.poke((8 + i * 4).U)
+          c.clock.step()
+          val result = c.io.mem_debug_read_data.peek().litValue
+          
+          // println(f"Iteration $i%3d: fast_rsqrt_result=0x$result%x ($result%d), answer=0x${arr(i)}%x (${arr(i)}%d)")
+         
+          c.io.mem_debug_read_data.expect(arr(i).U)
+        }
+        c.io.mem_debug_read_address.poke(4.U)
+        c.clock.step()
+        val testResult = c.io.mem_debug_read_data.peek().litValue
+        c.io.mem_debug_read_data.expect(1.U, s", fast_rsqrt Test failed: result=$testResult") // it should pass.
+      }
+    }
+    
     it should "calculate recursively fibonacci(10)" in {
       runProgram("fibonacci.asmbin", cfg) { c =>
         for (i <- 1 to 50) {
@@ -170,5 +251,6 @@ class PipelineProgramTest extends AnyFlatSpec with ChiselScalatestTester {
         c.io.mem_debug_read_data.expect(0x2022L.U)
       }
     }
+    
   }
 }
