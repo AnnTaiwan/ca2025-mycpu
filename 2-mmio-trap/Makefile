@@ -44,6 +44,18 @@ demo: verilator-sdl2
 	@echo ""
 	@echo "✅ Demo complete! You should have seen animated nyancat."
 
+demo-qrcode: verilator-sdl2
+	@echo "QR Starting VGA demo with qrcode generation..."
+	@echo "   Display: 640×480@72Hz with SDL2 visualization"
+	@echo "   Program: qrcode_vga.asmbin (1-frame qrcode graphic)"
+	@echo "   Note: Frame upload + animation takes significant time"
+	@echo "   Duration: 500M cycles (~5 minutes, includes full animation)"
+	@echo ""
+	cd verilog/verilator/obj_dir && ./VTop -vga -instruction ../../../src/main/resources/qrcode_vga.asmbin -time 500000000
+	@echo ""
+	@echo "✅ Demo complete! You should have seen generated qrcode."
+
+
 indent:
 	find . -name '*.scala' | xargs scalafmt
 	clang-format -i verilog/verilator/*.cpp

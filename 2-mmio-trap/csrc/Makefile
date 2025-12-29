@@ -41,6 +41,13 @@ nyancat.asmbin: nyancat.c nyancat-data.h init_minimal.o
 	$(CROSS_COMPILE)ld -o nyancat.elf -T link.lds $(LDFLAGS) nyancat.o init_minimal.o
 	$(OBJCOPY) -O binary -j .text -j .data nyancat.elf $@
 
+qrcode_vga.asmbin: qrcode_vga.c qrcode_gen.c qrcode_data.h init_minimal.o
+	$(CC) $(CFLAGS) -c -o qrcode_gen.o qrcode_gen.c
+	$(CC) $(CFLAGS) -c -o qrcode_vga.o qrcode_vga.c
+	$(CROSS_COMPILE)ld -o qrcode_vga.elf -T link.lds $(LDFLAGS) qrcode_vga.o qrcode_gen.o init_minimal.o
+	$(OBJCOPY) -O binary -j .text -j .data qrcode_vga.elf $@
+
+
 init_minimal.o: init_minimal.S
 	$(AS) -R $(ASFLAGS) -o $@ $<
 
@@ -63,10 +70,10 @@ endif
 # Nyancat build depends on generated data
 nyancat.o: nyancat.c nyancat-data.h
 
-update: $(BINS) nyancat.asmbin
-	cp -f $(BINS) nyancat.asmbin ../src/main/resources
+update: $(BINS) nyancat.asmbin qrcode_vga.asmbin
+	cp -f $(BINS) nyancat.asmbin qrcode_vga.asmbin ../src/main/resources
 	@echo ""
-	@echo "Updated $(words $(BINS)) test programs + nyancat.asmbin to ../src/main/resources"
+	@echo "Updated $(words $(BINS)) test programs + nyancat.asmbin + qrcode_vga.asmbin to ../src/main/resources"
 
 clean:
 	$(RM) *.o *.elf *.asmbin init_minimal.S nyancat-data.h
