@@ -27,7 +27,8 @@ BINS = \
 	quicksort.asmbin \
 	sb.asmbin \
 	irqtrap.asmbin \
-	uart.asmbin
+	uart.asmbin \
+	test_rs_mul.asmbin \
 
 # Clear the .DEFAULT_GOAL special variable, so that the following turns
 # to the first target after .DEFAULT_GOAL is not set.
@@ -74,7 +75,7 @@ update: $(BINS) nyancat.asmbin qrcode_vga.asmbin
 	cp -f $(BINS) nyancat.asmbin qrcode_vga.asmbin ../src/main/resources
 	@echo ""
 	@echo "Updated $(words $(BINS)) test programs + nyancat.asmbin + qrcode_vga.asmbin to ../src/main/resources"
-
+	
 clean:
 	$(RM) *.o *.elf *.asmbin init_minimal.S nyancat-data.h
 

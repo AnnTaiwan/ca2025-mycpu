@@ -15,6 +15,11 @@ WRITE_VCD ?= 1
 test:
 	cd .. && sbt "project mmioTrap" test
 
+test-qrcode: # test by chisel test
+	cd .. && sbt "project mmioTrap" "testOnly *QRCodeVGATest"
+test-rs-mul: # test by chisel test
+	cd .. && sbt "project mmioTrap" "testOnly *ReedSolomonMulTest"
+
 verilator:
 	cd .. && PATH=$$HOME/.local/bin:$$PATH sbt "project mmioTrap" "runMain board.verilator.VerilogGenerator"
 	cd verilog/verilator && verilator --trace --exe --cc sim.cpp Top.v ../../src/main/resources/vsrc/TrueDualPortRAM32.v && make -C obj_dir -f VTop.mk
