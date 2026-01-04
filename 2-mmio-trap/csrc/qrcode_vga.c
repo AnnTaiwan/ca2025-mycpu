@@ -139,45 +139,46 @@ void write_qr_data_to_memory(qr_ctx *ctx, int ret_value)
         *mem32++ = ctx->bmp[y];
     }
     
-    // Write completion marker at mem[36]
+    // Write completion marker at 0x00000090
+    mem32 = (volatile uint32_t *)0x00000090;
     *mem32 = 0xDEADBEEF;
     
     // Write ASCII QR code starting at mem[64] (0x100)
-    volatile char *mem8 = (volatile char *)0x00000100;
+    // volatile char *mem8 = (volatile char *)0x00000100;
     
-    // Write top border
-    for (int i = 0; i < ctx->size + 2; i++) {
-        *mem8++ = '#';
-        *mem8++ = '#';
-    }
-    *mem8++ = '\n';
+    // // Write top border
+    // for (int i = 0; i < ctx->size + 2; i++) {
+    //     *mem8++ = '#';
+    //     *mem8++ = '#';
+    // }
+    // *mem8++ = '\n';
     
-    // Write QR code rows with borders
-    for (int y = 0; y < ctx->size; y++) {
-        *mem8++ = '#';
-        *mem8++ = '#';
-        for (int x = 0; x < ctx->size; x++) {
-            bool is_black = qr_getdot(ctx, x, y);
-            if (is_black) {
-                *mem8++ = ' ';
-                *mem8++ = ' ';
-            } else {
-                *mem8++ = '#';
-                *mem8++ = '#';
-            }
-        }
-        *mem8++ = '#';
-        *mem8++ = '#';
-        *mem8++ = '\n';
-    }
+    // // Write QR code rows with borders
+    // for (int y = 0; y < ctx->size; y++) {
+    //     *mem8++ = '#';
+    //     *mem8++ = '#';
+    //     for (int x = 0; x < ctx->size; x++) {
+    //         bool is_black = qr_getdot(ctx, x, y);
+    //         if (is_black) {
+    //             *mem8++ = ' ';
+    //             *mem8++ = ' ';
+    //         } else {
+    //             *mem8++ = '#';
+    //             *mem8++ = '#';
+    //         }
+    //     }
+    //     *mem8++ = '#';
+    //     *mem8++ = '#';
+    //     *mem8++ = '\n';
+    // }
     
-    // Write bottom border
-    for (int i = 0; i < ctx->size + 2; i++) {
-        *mem8++ = '#';
-        *mem8++ = '#';
-    }
-    *mem8++ = '\n';
-    *mem8++ = '\0';
+    // // Write bottom border
+    // for (int i = 0; i < ctx->size + 2; i++) {
+    //     *mem8++ = '#';
+    //     *mem8++ = '#';
+    // }
+    // *mem8++ = '\n';
+    // *mem8++ = '\0';
 }
 
 
@@ -294,9 +295,9 @@ int main(void)
         ret = generate_qrcode_opt_v2();
     
     // Write all QR data to memory (bitmap + ASCII)
-    // write_qr_data_to_memory(&ctx[0], ret);
-    // if(ret < 0)
-    //     return -1;
+    write_qr_data_to_memory(&ctx[0], ret);
+    if(ret < 0)
+        return -1;
     
     // Verify VGA peripheral presence
     uint32_t id = vga_read32(VGA_ID);

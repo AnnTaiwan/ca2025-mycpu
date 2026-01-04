@@ -19,7 +19,7 @@ typedef struct qr_ctx {
 extern qr_ctx ctx[1];
 
 // encode string
-extern const char *str;
+extern const char str[];
 
 // Hardcoded QR bitmap data (29 lines for version 3)
 static const uint32_t hardcoded_qr_bitmap[29] = {

@@ -28,13 +28,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "qrcode_data.h"
-
-
+#define PARM_SOURCE_TYPE 2
+#define DEBUG_REED_SOLOMON false
 // Global definitions (declared as extern in qrcode_data.h)
 qr_ctx ctx[1];
-// const char *str = "https://github.com/AnnTaiwan/ca2025-mycpu";
-const char *str = "https://github.com/sysprog21/rv32emu";
-// const char *str = "https://github.com";
+/* Available Links */
+// const char str[] = "https://github.com/AnnTaiwan/ca2025-mycpu";
+// const char str[] = "https://github.com/sysprog21/rv32emu";
+// const char str[] = "https://www.thonky.com/qr-code-tutorial/";  // Use array instead of pointer to ensure embedding
+// const char str[] = "https://www.youtube.com/watch?v=1pQJkt7-R4Q";  // Use array instead of pointer to ensure embedding
+const char str[] = "https://scanova.io/blog/qr-code-structure/";  // Use array instead of pointer to ensure embedding
+
 /*
  * Get dots for display.
  */
@@ -293,9 +297,9 @@ static inline uint _rs_mul(uint x, uint y)
      */
     uint result;
     asm volatile(
-        "addi t0, x0, 0\n"              /* z = 0 (li t0, 0) */
-        "addi t1, x0, 7\n"              /* i = 7 (li t1, 7) */
-        "addi t6, %1, 0\n"              /* Save x in t6 (mv t6, %1) */
+        "li t0, 0\n"              /* z = 0 */
+        "li t1, 7\n"              /* i = 7 (counter) */
+        "mv t6, %1\n"             /* Save x in t6 */
         
         ".Lloop:\n"
         "  slli a2, t0, 1\n"      /* a2 = z << 1 */
@@ -306,7 +310,7 @@ static inline uint _rs_mul(uint x, uint y)
         */
         "  srli a3, t0, 7\n"      /* a3 = z >> 7 */
         "  beqz a3, .Lskip_mul\n" /* if (z >> 7) == 0, skip multiplication */
-        "  addi a4, a3, 0\n"      /* a4 = a3 (bit 0) (mv a4, a3) */
+        "  mv a4, a3\n"           /* a4 = a3 (bit 0) */
         "  slli t3, a3, 2\n"      /* t3 = a3 << 2 (bit 2) */
         "  add a4, a4, t3\n"
         "  slli t3, a3, 3\n"      /* t3 = a3 << 3 (bit 3) */
@@ -318,7 +322,7 @@ static inline uint _rs_mul(uint x, uint y)
         "  xor t0, a2, a4\n"      /* z = (z << 1) ^ ((z >> 7) * 0x11D) */
         "  j .Lmul_end\n"
         ".Lskip_mul:\n"
-        "  addi t0, a2, 0\n"      /* let t0 be (z << 1) (mv t0, a2) */
+        "  mv t0, a2\n"             /* let t0 be (z << 1)*/
         ".Lmul_end:\n"
         /* Calculate ((y >> i) & 1) * x 
             (y >> i) & 1 must be 1 or 0, so it is simple to do this multiplication
@@ -333,7 +337,7 @@ static inline uint _rs_mul(uint x, uint y)
         "  addi t1, t1, -1\n"      /* i-- */
         "  bgez t1, .Lloop\n"      /* if i >= 0, continue loop */
         
-        "  addi %0, t0, 0\n"      /* return z (mv %0, t0) */
+        "  mv %0, t0\n"            /* return z */
         : "=r"(result)             /* Output: result */
         : "r"(x), "r"(y)           /* Inputs: x, y */
         : "t0", "t1", "t3", "t6", "a2", "a3", "a4"  /* Clobbered: Remind those registers will be modified */
@@ -341,15 +345,157 @@ static inline uint _rs_mul(uint x, uint y)
     return result;
 }
 #endif
+#if DEBUG_REED_SOLOMON
+void write_mul_data(volatile uint8_t *r, uint deg)
+{
+    // Write ASCII QR code starting at mem[64] (0x100)
+    volatile char *mem8 = (volatile char *)0x00000100;
+    for(uint i = 0; i < deg; i++)
+    {
+        *mem8++ = r[i];
+    }
+}
+#endif
 /*
  * Calculate the ECC bytes.
  */
+#if DEBUG_REED_SOLOMON && PARM_SOURCE_TYPE == 0
 static void _reed_solomon(qr_ctx *ctx, uint8_t *buf)
 {
-    qr_params *para = (qr_params *) ctx->params;
+    volatile qr_params *para = (volatile qr_params *) ctx->params;
     uint deg = para->eccdeg;
-    uint8_t *gen = para->gen;
+    volatile uint8_t *gen = para->gen;
     uint len = para->capa - para->eccdeg;
+    volatile uint8_t *res = buf + len; // residual
+    
+    // Debug: Write deg, len, and gen to memory at 0x200
+    volatile uint32_t *debug_ptr = (volatile uint32_t *)0x200;
+    debug_ptr[0] = deg;  // 0x200: deg
+    debug_ptr[1] = len;  // 0x204: len
+    debug_ptr[2] = para->capa;  // 0x208: total capacity
+    debug_ptr[3] = (uint32_t)gen;  // 0x20C: gen pointer address
+    debug_ptr[4] = (uint32_t)res;  // 0x210: res pointer address
+    debug_ptr[5] = (uint32_t)buf;  // 0x214: buf pointer address
+    debug_ptr[6] = (uint32_t)para;  // 0x218: para pointer address
+    debug_ptr[7] = (uint32_t)ctx->params;  // 0x21C: ctx->params address
+    
+    // Write gen array at 0x220 (via gen pointer)
+    volatile uint8_t *gen_debug = (volatile uint8_t *)0x220;
+    for (uint i = 0; i < deg; i++) {
+        gen_debug[i] = gen[i];
+    }
+    
+    // Write ENTIRE para structure at 0x230 (raw memory dump)
+    volatile uint8_t *para_debug = (volatile uint8_t *)0x230;
+    volatile uint8_t *para_bytes = (volatile uint8_t *)para;
+    for (uint i = 0; i < (2 + deg); i++) {  // capa + eccdeg + gen array
+        para_debug[i] = para_bytes[i];
+    }
+    
+    // DIRECT read from gen pointer address (bypass the gen variable)
+    volatile uint8_t *gen_direct = (volatile uint8_t *)debug_ptr[3];  // Use the address we just saved
+    volatile uint8_t *gen_direct_debug = (volatile uint8_t *)0x250;
+    for (uint i = 0; i < deg; i++) {
+        gen_direct_debug[i] = gen_direct[i];
+    }
+    
+    for (uint i = 0; i < len; i++) {
+        uint factor = buf[i] ^ res[0];
+        for (uint j = 1; j < deg; j++)
+            res[j - 1] = res[j];
+        res[deg - 1] = 0;
+        for (uint j = 0; j < deg; j++)
+            res[j] ^= _rs_mul(gen[j], factor);
+    }
+    write_mul_data(res, deg);
+}
+#elif DEBUG_REED_SOLOMON && PARM_SOURCE_TYPE == 1
+static void _reed_solomon(qr_ctx *ctx, uint8_t *buf)
+{
+    // STACK-ALLOCATED array to completely avoid .rodata corruption
+    uint8_t _params_hardcoded[] = {
+        // total code words(data + EC), ECC code words, ECC generator polynomial...(The highest term's coefficient is always 1, so ignore here.)
+        26,   7,    0x7f, 0x7a, 0x9a, 0xa4, 0x0b, 0x44, 0x75,  // V1
+        44,   10,   0xd8, 0xc2, 0x9f, 0x6f, 0xc7, 0x5e, 0x5f,
+        0x71, 0x9d, 0xc1,  // V2
+        70,   15,   0x1d, 0xc4, 0x6f, 0xa3, 0x70, 0x4a, 0x0a,
+        0x69, 0x69, 0x8b,  // V3
+        0x84, 0x97, 0x20, 0x86, 0x1a};
+
+    uint deg = _params_hardcoded[22];  // V3 eccdeg
+    uint len = _params_hardcoded[21] - deg;  // V3: 70 - 15
+    const uint8_t *gen = &_params_hardcoded[23];
+    uint8_t *res = buf + len; // residual
+    
+    // Debug: Write parameters and gen array to verify correctness
+    volatile uint32_t *debug_ptr = (volatile uint32_t *)0x200;
+    debug_ptr[0] = deg;  // 0x200: deg (should be 15)
+    debug_ptr[1] = len;  // 0x204: len (should be 55)
+    debug_ptr[2] = deg + len;  // 0x208: capa (should be 70)
+    debug_ptr[3] = (uint32_t)gen;  // 0x20C: gen pointer address
+    debug_ptr[4] = (uint32_t)res;  // 0x210: res pointer address
+    debug_ptr[5] = (uint32_t)buf;  // 0x214: buf pointer address
+    debug_ptr[6] = 0xAAAAAAAA;  // 0x218: marker (no para in hardcoded version)
+    debug_ptr[7] = 0xBBBBBBBB;  // 0x21C: marker (no ctx->params in hardcoded version)
+    
+    // Write gen array at 0x220 (via gen pointer)
+    volatile uint8_t *gen_debug = (volatile uint8_t *)0x220;
+    for (uint i = 0; i < deg; i++) {
+        gen_debug[i] = gen[i];
+    }
+    
+    // Write gen array again at 0x230 for verification
+    volatile uint8_t *gen_verify = (volatile uint8_t *)0x230;
+    for (uint i = 0; i < deg; i++) {
+        gen_verify[i] = gen[i];
+    }
+    
+    // Write gen array at 0x250 for compatibility with existing CPUTest.scala
+    volatile uint8_t *gen_direct = (volatile uint8_t *)0x250;
+    for (uint i = 0; i < deg; i++) {
+        gen_direct[i] = _params_hardcoded[23+i];
+    }
+    
+    for (uint i = 0; i < len; i++) {
+        uint factor = buf[i] ^ res[0];
+        for (uint j = 1; j < deg; j++)
+            res[j - 1] = res[j];
+        res[deg - 1] = 0;
+        for (uint j = 0; j < deg; j++)
+            res[j] ^= _rs_mul(gen[j], factor);
+    }
+    write_mul_data(res, deg);
+}
+#elif (!DEBUG_REED_SOLOMON) // not debug mode
+static void _reed_solomon(qr_ctx *ctx, uint8_t *buf)
+{
+    uint8_t _params_hardcoded[] = {
+        // total code words(data + EC), ECC code words, ECC generator polynomial...(The highest term's coefficient is always 1, so ignore here.)
+        26,   7,    0x7f, 0x7a, 0x9a, 0xa4, 0x0b, 0x44, 0x75,  // V1
+        44,   10,   0xd8, 0xc2, 0x9f, 0x6f, 0xc7, 0x5e, 0x5f,
+        0x71, 0x9d, 0xc1,  // V2
+        70,   15,   0x1d, 0xc4, 0x6f, 0xa3, 0x70, 0x4a, 0x0a,
+        0x69, 0x69, 0x8b,  // V3
+        0x84, 0x97, 0x20, 0x86, 0x1a};
+    
+    uint offset = 0;
+    switch(QR_VERSION){
+        case 1:
+            offset = 0;
+            break;
+        case 2:
+            offset = 9;
+            break;
+        case 3:
+            offset = 21;
+            break;
+        default: // default to be version 1
+            offset = 0;
+            break;
+    }
+    uint deg = _params_hardcoded[offset + 1]; // V3 eccdeg: 15
+    uint len = _params_hardcoded[offset] - deg; // V3: 70 - 15
+    const uint8_t *gen = &_params_hardcoded[offset + 2];
     uint8_t *res = buf + len; // residual
     for (uint i = 0; i < len; i++) {
         uint factor = buf[i] ^ res[0];
@@ -360,7 +506,7 @@ static void _reed_solomon(qr_ctx *ctx, uint8_t *buf)
             res[j] ^= _rs_mul(gen[j], factor);
     }
 }
-
+#endif
 /*
  * Return if dot (x,y) is for data (i.e. not function patterns).
  */
@@ -500,7 +646,6 @@ static uint str_len(const char *s)
 
 int generate_qrcode_opt_v2()
 {
-    // qr_ctx ctx[1];
     // const char *str = "https://github.com/sysprog21/rv32emu";
     // const char *str = "ffffffffffffffffffffffffffffffffff";
     // const char *str = "https://www.youtube.com/watch?v=x1v2tX4_dkQ";

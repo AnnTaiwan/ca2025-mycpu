@@ -211,6 +211,61 @@ class InterruptTrapTest extends AnyFlatSpec with ChiselScalatestTester {
   }
 }
 
+class ReedSolomonMulTest extends AnyFlatSpec with ChiselScalatestTester {
+  behavior.of("[CPU] Reed-Solomon GF(2^8) Multiplication Test")
+  it should "verify _rs_mul correctness for OPT=0 and OPT=1" in {
+    test(new TestTopModule("test_rs_mul.asmbin")).withAnnotations(TestAnnotations.annos) { c =>
+      // Run test program
+      c.clock.setTimeout(0)
+      for (i <- 1 to 1000) {
+        c.clock.step(1000)
+      }
+      
+      // Read test summary from 0x10
+      c.io.mem_debug_read_address.poke(0x10.U)
+      c.clock.step()
+      val summary = c.io.mem_debug_read_data.peekInt()
+      val passed = (summary >> 16) & 0xFFFF
+      val failed = summary & 0xFFFF
+      
+      println(s"\n========== Reed-Solomon Multiplication Test Results ==========")
+      println(s"Passed: $passed")
+      println(s"Failed: $failed")
+      
+      // Read implementation type from 0x14
+      c.io.mem_debug_read_address.poke(0x14.U)
+      c.clock.step()
+      val impl = c.io.mem_debug_read_data.peekInt()
+      val implName = if (impl == 0) "LUT (OPT=0)" else "Iterative (OPT=1)"
+      println(s"Implementation: $implName")
+      
+      // If there are failures, print them (failures start at 0x1C)
+      if (failed > 0) {
+        println(s"\nFailure Details:")
+        for (i <- 0 until failed.toInt) {
+          c.io.mem_debug_read_address.poke((0x1C + i * 4).U)
+          c.clock.step()
+          val failData = c.io.mem_debug_read_data.peekInt()
+          val testIdx = (failData >> 16) & 0xFF
+          val expected = (failData >> 8) & 0xFF
+          val actual = failData & 0xFF
+          println(f"  Test #$testIdx: Expected 0x$expected%02X, Got 0x$actual%02X")
+        }
+      }
+      
+      // Check completion marker
+      c.io.mem_debug_read_address.poke(0x18.U)
+      c.clock.step()
+      c.io.mem_debug_read_data.expect(0xDEADBEEFL.U, "Test completion marker should be 0xDEADBEEF")
+      
+      println("===============================================================\n")
+      
+      // Test should pass if no failures
+      assert(failed == 0, s"Reed-Solomon multiplication test failed: $failed test(s) failed")
+    }
+  }
+}
+
 class QRCodeVGATest extends AnyFlatSpec with ChiselScalatestTester {
   behavior.of("[CPU] QR Code VGA program")
   it should "generate QR code and write data to memory" in {
@@ -242,7 +297,7 @@ class QRCodeVGATest extends AnyFlatSpec with ChiselScalatestTester {
         c.io.mem_debug_read_address.poke((0x18 + i * 4).U)
         c.clock.step()
         val lineData = c.io.mem_debug_read_data.peekInt()
-        println(f"Line $i%2d: 0x$lineData%08X")
+        println(f"Line $i%d: 0x$lineData%08X")
       }
       
       // Validate finder patterns
@@ -261,24 +316,128 @@ class QRCodeVGATest extends AnyFlatSpec with ChiselScalatestTester {
       c.clock.step()
       c.io.mem_debug_read_data.expect(0xDEADBEEFL.U, "Completion marker should be 0xDEADBEEF")
       
-      // 5. ASCII QR code at mem[64] onwards
-      println("\n========== ASCII QR Code ==========")
-      val asciiStart = 0x100
-      var shouldBreak = false
-      for (i <- 0 until 3500 by 4 if !shouldBreak) {
-        c.io.mem_debug_read_address.poke((asciiStart + i).U)
+      // 5. Debug: Read deg, len, capa, and gen from memory
+      println("\n========== Reed-Solomon Debug Info (0x200) ===========")
+      c.io.mem_debug_read_address.poke(0x200.U)
+      c.clock.step()
+      val deg = c.io.mem_debug_read_data.peekInt()
+      println(s"deg (eccdeg): $deg")
+      
+      c.io.mem_debug_read_address.poke(0x204.U)
+      c.clock.step()
+      val len = c.io.mem_debug_read_data.peekInt()
+      println(s"len (data length): $len")
+      
+      c.io.mem_debug_read_address.poke(0x208.U)
+      c.clock.step()
+      val capa = c.io.mem_debug_read_data.peekInt()
+      println(s"capa (total capacity): $capa")
+      println(s"Verification: len + deg = ${len + deg} (should equal capa=$capa)")
+      
+      c.io.mem_debug_read_address.poke(0x20C.U)
+      c.clock.step()
+      val genPtr = c.io.mem_debug_read_data.peekInt()
+      println(f"gen pointer: 0x$genPtr%08X")
+      
+      c.io.mem_debug_read_address.poke(0x210.U)
+      c.clock.step()
+      val resPtr = c.io.mem_debug_read_data.peekInt()
+      println(f"res pointer: 0x$resPtr%08X")
+      
+      c.io.mem_debug_read_address.poke(0x214.U)
+      c.clock.step()
+      val bufPtr = c.io.mem_debug_read_data.peekInt()
+      println(f"buf pointer: 0x$bufPtr%08X")
+      
+      c.io.mem_debug_read_address.poke(0x218.U)
+      c.clock.step()
+      val paraPtr = c.io.mem_debug_read_data.peekInt()
+      println(f"para pointer: 0x$paraPtr%08X")
+      
+      c.io.mem_debug_read_address.poke(0x21C.U)
+      c.clock.step()
+      val ctxParamsPtr = c.io.mem_debug_read_data.peekInt()
+      println(f"ctx->params: 0x$ctxParamsPtr%08X")
+      
+      println("\n=== Gen via gen pointer (0x220) ===")
+      val genStart = 0x220
+      for (i <- 0 until deg.toInt) {
+        val wordIdx = i / 4
+        val byteOffset = i % 4
+        c.io.mem_debug_read_address.poke((genStart + wordIdx * 4).U)
         c.clock.step()
-        val word = c.io.mem_debug_read_data.peekInt().toInt
-        for (j <- 0 until 4 if !shouldBreak) {
-          val ch = ((word >> (j * 8)) & 0xFF).toChar
-          if (ch == '\u0000') {
-            shouldBreak = true
-          } else {
-            print(ch)
+        val word = c.io.mem_debug_read_data.peekInt()
+        val genByte = (word >> (byteOffset * 8)) & 0xFF
+        println(f"gen[$i%d]: 0x$genByte%02X")
+      }
+      
+      println("\n=== Raw para bytes (0x230) ===")
+      val paraStart = 0x230
+      for (i <- 0 until (2 + deg.toInt)) {
+        val wordIdx = i / 4
+        val byteOffset = i % 4
+        c.io.mem_debug_read_address.poke((paraStart + wordIdx * 4).U)
+        c.clock.step()
+        val word = c.io.mem_debug_read_data.peekInt()
+        val byte = (word >> (byteOffset * 8)) & 0xFF
+        if (i == 0) println(f"para[0] (capa): 0x$byte%02X")
+        else if (i == 1) println(f"para[1] (eccdeg): 0x$byte%02X")
+        else println(f"para[${i-2}%d] (gen): 0x$byte%02X")
+      }
+      
+      println("\n=== Direct read from gen address (0x250) ===")
+      val genDirectStart = 0x250
+      for (i <- 0 until deg.toInt) {
+        val wordIdx = i / 4
+        val byteOffset = i % 4
+        c.io.mem_debug_read_address.poke((genDirectStart + wordIdx * 4).U)
+        c.clock.step()
+        val word = c.io.mem_debug_read_data.peekInt()
+        val genByte = (word >> (byteOffset * 8)) & 0xFF
+        println(f"gen[$i%d]: 0x$genByte%02X")
+      }
+      println("=======================================================")
+      
+      // 6. reed-solomon result at mem[64] onwards (15 bytes for V3)
+      println("\n========== Reed-Solomon ECC Bytes ===========")
+      val eccStart = 0x100
+      val eccByteCount = deg.toInt
+      val eccWordCount = (eccByteCount + 3) / 4
+      
+      for (i <- 0 until eccWordCount) {
+        c.io.mem_debug_read_address.poke((eccStart + i * 4).U)
+        c.clock.step()
+        val word = c.io.mem_debug_read_data.peekInt()
+        
+        // Extract individual bytes from the 32-bit word (little-endian)
+        for (j <- 0 until 4) {
+          val byteIdx = i * 4 + j
+          if (byteIdx < eccByteCount) {
+            val byte = (word >> (j * 8)) & 0xFF
+            println(f"ECC[$byteIdx%d]: 0x$byte%02X")
           }
         }
       }
-      println("\n===================================")
+      println("=============================================")
     }
+      // 7. ASCII QR code at mem[64] onwards
+    //   println("\n========== ASCII QR Code ==========")
+    //   val asciiStart = 0x100
+    //   var shouldBreak = false
+    //   for (i <- 0 until 3845 by 4 if !shouldBreak) {
+    //     c.io.mem_debug_read_address.poke((asciiStart + i).U)
+    //     c.clock.step()
+    //     val word = c.io.mem_debug_read_data.peekInt().toInt
+    //     for (j <- 0 until 4 if !shouldBreak) {
+    //       val ch = ((word >> (j * 8)) & 0xFF).toChar
+    //       if (ch == '\u0000') {
+    //         shouldBreak = true
+    //       } else {
+    //         print(ch)
+    //       }
+    //     }
+    //   }
+    //   println("\n===================================")
+    // }
   }
 }
