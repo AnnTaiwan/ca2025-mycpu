@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: MIT
-// Nyancat animation program for VGA peripheral
-// Uses delta-RLE compression for superior compression ratio
+// QRCODE image program for VGA peripheral
+// When QRCODE_VGA=1, allow vga to show the qrcode image.
+// When USE_HARDCODED_DATA=1, uses version3 hardcoded qrcode data.
 
 #include <stdbool.h>
 #include <stdint.h>
-#define QRCODE_VGA 1
+#define QRCODE_VGA 1 // allow using vga to generate and show qrcode
+#define USE_HARDCODED_DATA 0 // Enable hardcoded qrcode data to test the vga result is fine for debuging.
 
+#if !QRCODE_VGA
 // Custom memory copy for bare-metal environment (no libc)
 static inline void copy_buffer(uint8_t *dest, const uint8_t *src, int n)
 {
     for (int i = 0; i < n; i++)
         dest[i] = src[i];
 }
-
+#endif
 // VGA MMIO register addresses (base: 0x30000000)
 #define VGA_BASE 0x30000000u
 #define VGA_ID (VGA_BASE + 0x00)
@@ -90,7 +93,7 @@ static inline uint32_t pack8_pixels(const uint8_t *pixels)
            ((uint32_t) (pixels[7] & 0xF) << 28);
 }
 
-// Initialize VGA palette witgenerate_qrcode_opt_v2h nyancat colors
+// Initialize VGA palette with qrcode colors
 void vga_init_palette(void)
 {
     for (int i = 0; i < PALETTE_SIZE; i++) {
@@ -101,10 +104,11 @@ void vga_init_palette(void)
         vga_write32(VGA_PALETTE(i), 0x00);
     }
 }
-
+#if QRCODE_VGA
 // Frame buffers for delta decompression
 static uint8_t frame_buffer[FRAME_SIZE];       // Current frame buffer
 // static uint8_t prev_frame_buffer[FRAME_SIZE];  // Previous frame for delta
+#endif
 
 #if QRCODE_VGA
 /* FRAME size is 64*64 pixels
@@ -288,16 +292,15 @@ extern int generate_qrcode_opt_v2(void);
 
 int main(void)
 {
-    int a = 1;
     // generate qrcode first
+#if !USE_HARDCODED_DATA
     int ret = 1;
-    if(a==1)
-        ret = generate_qrcode_opt_v2();
-    
+    ret = generate_qrcode_opt_v2();
     // Write all QR data to memory (bitmap + ASCII)
     write_qr_data_to_memory(&ctx[0], ret);
     if(ret < 0)
         return -1;
+#endif    
     
     // Verify VGA peripheral presence
     uint32_t id = vga_read32(VGA_ID);
@@ -312,11 +315,12 @@ int main(void)
 // Upload all frames (baseline RLE)
     for (int frame = 0; frame < FRAME_COUNT; frame++) {
         
-        if(a==1)
+        #if !USE_HARDCODED_DATA
             vga_upload_frame_qrcode(frame); // setting one frame data
-        else
+        #else
             vga_upload_hardcoded_qrcode(frame);
-        vga_write32(VGA_CTRL,
+        #endif
+            vga_write32(VGA_CTRL,
                     (frame << 4) | 0x01);  // Display frame as we upload
     }
 

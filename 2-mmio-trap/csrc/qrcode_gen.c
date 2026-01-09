@@ -658,3 +658,4 @@ int generate_qrcode_opt_v2()
     // dump_bmp(ctx);
     return 0;
 }
+
