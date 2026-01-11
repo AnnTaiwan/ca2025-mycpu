@@ -198,12 +198,25 @@ class Uart(frequency: Int, baudRate: Int) extends Module {
   val tx = Module(new BufferedTx(frequency, baudRate))
   val rx = Module(new Rx(frequency, baudRate))
 
-  io.bundle.read_data := 0.U
-  when(io.bundle.address === 0x4.U) {
+  // io.bundle.read_data := 0.U
+  // when(io.bundle.address === 0x4.U) {
+  //   io.bundle.read_data := baudRate.U
+  // }.elsewhen(io.bundle.address === 0xc.U) {
+  //   io.bundle.read_data := rxData
+  //   interrupt           := false.B
+  // }
+
+  when(io.bundle.address === 0x0.U) {
+    // bit 0: TX ready (can accept data)
+    // bit 1: RX valid (data available)
+    io.bundle.read_data := Cat(0.U(30.W), rx.io.channel.valid, tx.io.channel.ready)
+  }.elsewhen(io.bundle.address === 0x4.U) {
     io.bundle.read_data := baudRate.U
   }.elsewhen(io.bundle.address === 0xc.U) {
     io.bundle.read_data := rxData
     interrupt           := false.B
+  }.otherwise {
+    io.bundle.read_data := 0.U
   }
 
   tx.io.channel.valid := false.B

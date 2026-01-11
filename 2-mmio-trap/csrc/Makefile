@@ -34,7 +34,11 @@ BINS = \
 # to the first target after .DEFAULT_GOAL is not set.
 .DEFAULT_GOAL :=
 
-all: $(BINS)
+# Program targets (add new programs here)
+PROGRAMS := nyancat qrcode_vga uart_simple_test
+BINARIES := $(PROGRAMS:%=%.asmbin)
+
+all: $(BINS) $(BINARIES)
 
 # Nyancat has minimal init (no trap handler) for correct memory layout
 nyancat.asmbin: nyancat.c nyancat-data.h init_minimal.o
@@ -42,12 +46,18 @@ nyancat.asmbin: nyancat.c nyancat-data.h init_minimal.o
 	$(CROSS_COMPILE)ld -o nyancat.elf -T link.lds $(LDFLAGS) nyancat.o init_minimal.o
 	$(OBJCOPY) -O binary -j .text -j .data nyancat.elf $@
 
-qrcode_vga.asmbin: qrcode_vga.c qrcode_gen.c qrcode_data.h init_minimal.o
+qrcode_vga.asmbin: qrcode_vga.c qrcode_gen.c uperf.c qrcode_data.h uperf.h init_minimal.o
+	$(CC) $(CFLAGS) -c -o uperf.o uperf.c
 	$(CC) $(CFLAGS) -c -o qrcode_gen.o qrcode_gen.c
 	$(CC) $(CFLAGS) -c -o qrcode_vga.o qrcode_vga.c
-	$(CROSS_COMPILE)ld -o qrcode_vga.elf -T link.lds $(LDFLAGS) qrcode_vga.o qrcode_gen.o init_minimal.o
+	$(CROSS_COMPILE)ld -o qrcode_vga.elf -T link.lds $(LDFLAGS) uperf.o qrcode_vga.o qrcode_gen.o init_minimal.o
 	$(OBJCOPY) -O binary -j .text -j .data qrcode_vga.elf $@
 
+uart_simple_test.asmbin: uart_simple_test.c uperf.c uperf.h init.o
+	$(CC) $(CFLAGS) -c -o uperf.o uperf.c
+	$(CC) $(CFLAGS) -c -o uart_simple_test.o uart_simple_test.c
+	$(CROSS_COMPILE)ld -o uart_simple_test.elf -T link.lds $(LDFLAGS) uperf.o uart_simple_test.o init.o
+	$(OBJCOPY) -O binary -j .text -j .data uart_simple_test.elf $@
 
 init_minimal.o: init_minimal.S
 	$(AS) -R $(ASFLAGS) -o $@ $<
@@ -71,12 +81,23 @@ endif
 # Nyancat build depends on generated data
 nyancat.o: nyancat.c nyancat-data.h
 
-update: $(BINS) nyancat.asmbin qrcode_vga.asmbin
-	cp -f $(BINS) nyancat.asmbin qrcode_vga.asmbin ../src/main/resources
+update: $(BINS) $(BINARIES)
+	cp -f $(BINS) $(BINARIES) ../src/main/resources
 	@echo ""
-	@echo "Updated $(words $(BINS)) test programs + nyancat.asmbin + qrcode_vga.asmbin to ../src/main/resources"
+	@echo "Updated $(words $(BINS)) test programs + $(BINARIES) to ../src/main/resources"
 	
 clean:
 	$(RM) *.o *.elf *.asmbin init_minimal.S nyancat-data.h
+
+see_qrcode_info: qrcode_vga.c qrcode_gen.c qrcode_data.h
+	@echo "\nIn qrcode_vga.c"
+	@echo "-----------------------------------------------------------------------------------"
+	@grep --color=always -i -e "#define QRCODE_VGA" -e "#define USE_HARDCODED_DATA" -e "#define DO_PERF" qrcode_vga.c
+	@echo "\nIn qrcode_gen.c"
+	@echo "-----------------------------------------------------------------------------------"
+	@grep --color=always -i -e '^const char str\[\] = \".*\"' -e "#define PARM_SOURCE_TYPE" -e "#define DEBUG_REED_SOLOMON" qrcode_gen.c
+	@echo "\nIn qrcode_data.h"
+	@echo "-----------------------------------------------------------------------------------"
+	@grep --color=always -i -e "#define QR_.*" qrcode_data.h
 
 .PHONY: all update clean

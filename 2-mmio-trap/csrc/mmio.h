@@ -98,8 +98,65 @@
  *   3. Add UART_STATUS register at offset +0x00
  *   4. Make UART_RECV return 0x100 | data when valid, 0x000 when not
  *   5. Make MMIO bus stall writes when TX buffer full
+ *
+ * ============================================================
+ * UPDATED UART IMPLEMENTATION WITH STATUS REGISTER
+ * ============================================================
+ *
+ * The hardware has been updated to expose TX/RX status via UART_STATUS.
+ * This eliminates the previous limitations and enables reliable operation.
+ *
+ * Register Map (UPDATED):
+ *   +0x00: UART_STATUS   - Status register (read-only)
+ *                          bit 0: TX ready (1 = buffer can accept data)
+ *                          bit 1: RX valid (1 = data available to read)
+ *                          bits 2-31: Reserved (always 0)
+ *   +0x04: UART_BAUDRATE - Baud rate (read-only, compile-time constant)
+ *   +0x08: UART_ENABLE   - Enable control and interrupt clear (write-only)
+ *   +0x0C: UART_RECV     - Receive data register (read, clears RX interrupt)
+ *   +0x10: UART_SEND     - Transmit data register (write-only)
+ *
+ * TX Behavior (UPDATED):
+ *   - UART_STATUS bit 0 indicates TX buffer ready state
+ *   - When bit 0 = 1: Buffer empty, safe to write to UART_SEND
+ *   - When bit 0 = 0: Buffer full, writing to UART_SEND may drop data
+ *   - Software MUST poll UART_STATUS before each write for reliability
+ *   - No character dropping when STATUS polling is used correctly
+ *
+ *   Recommended TX pattern:
+ *     while ((*UART_STATUS & 0x01) == 0) ;  // Wait for TX ready
+ *     *UART_SEND = byte;                     // Safe write
+ *
+ * RX Behavior (UPDATED):
+ *   - UART_STATUS bit 1 indicates RX data valid state
+ *   - When bit 1 = 1: Valid data available in UART_RECV
+ *   - When bit 1 = 0: No new data, reading UART_RECV returns stale value
+ *   - Can now reliably receive ALL byte values including 0x00
+ *   - Software should check UART_STATUS before reading UART_RECV
+ *
+ *   Recommended RX pattern:
+ *     while ((*UART_STATUS & 0x02) == 0) ;  // Wait for RX valid
+ *     unsigned char byte = *UART_RECV;       // Safe read
+ *
+ * Status Register Bit Definitions:
+ *   bit 0 (0x01): TX ready
+ *                 - Set when BufferedTx can accept new data
+ *                 - Cleared when TX buffer is full or transmitting
+ *   bit 1 (0x02): RX valid  
+ *                 - Set when new data received and available
+ *                 - Cleared when UART_RECV is read
+ *   bits 2-31:    Reserved, always read as 0
+ *
+ * Benefits of STATUS Register:
+ *   ✓ Eliminates dropped TX characters (no more blind writes)
+ *   ✓ Reliable RX polling for all byte values (0x00-0xFF)
+ *   ✓ No need for conservative timing delays
+ *   ✓ Works at any baud rate with any message length
+ *   ✓ Deterministic behavior for testing and debugging
  */
 #define UART_BASE 0x40000000
+/* +0x00: UART status */
+#define UART_STATUS ((volatile unsigned int *) (UART_BASE + 0))
 /* +0x04: Baud rate (R/W) */
 #define UART_BAUDRATE ((volatile unsigned int *) (UART_BASE + 4))
 /* +0x08: Enable/IRQ clear (W) */
@@ -147,4 +204,68 @@
  *
  * For comprehensive RX implementations (polling + interrupt-driven),
  * see uart_rx.c reference implementation in csrc/ directory.
+ *
+ * ============================================================
+ * UART_STATUS Register Usage (New Hardware Implementation)
+ * ============================================================
+ *
+ * The UART_STATUS register provides reliable TX/RX status checking:
+ *   Bit 0: TX ready (1 = buffer can accept data, 0 = buffer full)
+ *   Bit 1: RX valid (1 = received data available, 0 = no data)
+ *
+ * Example 4: Reliable TX with UART_STATUS polling (no dropped bytes)
+ *
+ *   *UART_ENABLE = 1;
+ *   const char *msg = "Hello World\n";
+ *   while (*msg) {
+ *     // Wait for TX buffer ready
+ *     while ((*UART_STATUS & 0x01) == 0)
+ *       ;
+ *     *UART_SEND = *msg++;
+ *   }
+ *
+ * Example 5: Reliable RX with UART_STATUS polling (works for 0x00-0xFF)
+ *
+ *   *UART_ENABLE = 1;
+ *   unsigned char buffer[256];
+ *   int count = 0;
+ *   
+ *   // Receive up to 256 bytes with timeout
+ *   for (int timeout = 0; timeout < 10000 && count < 256; timeout++) {
+ *     if (*UART_STATUS & 0x02) {  // Check RX valid
+ *       buffer[count++] = (unsigned char)(*UART_RECV & 0xFF);
+ *       timeout = 0;  // Reset timeout on successful read
+ *     }
+ *   }
+ *
+ * Example 6: Echo server with UART_STATUS (production quality)
+ *
+ *   *UART_ENABLE = 1;
+ *   while (1) {
+ *     // Wait for RX data available
+ *     while ((*UART_STATUS & 0x02) == 0)
+ *       ;
+ *     unsigned char ch = (unsigned char)(*UART_RECV & 0xFF);
+ *     
+ *     // Wait for TX ready before echoing
+ *     while ((*UART_STATUS & 0x01) == 0)
+ *       ;
+ *     *UART_SEND = ch;
+ *   }
+ *
+ * Example 7: Helper function for reliable uart_putc
+ *
+ *   static inline void uart_putc_safe(unsigned char byte) {
+ *     while ((*UART_STATUS & 0x01) == 0)  // Wait for TX ready
+ *       ;
+ *     *UART_SEND = byte;
+ *   }
+ *
+ *   static inline int uart_getc_safe(unsigned char *byte) {
+ *     if (*UART_STATUS & 0x02) {  // Check RX valid
+ *       *byte = (unsigned char)(*UART_RECV & 0xFF);
+ *       return 1;  // Success
+ *     }
+ *     return 0;  // No data available
+ *   }
  */

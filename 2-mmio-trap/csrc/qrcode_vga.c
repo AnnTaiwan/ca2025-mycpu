@@ -290,14 +290,59 @@ static inline void delay(uint32_t cycles)
 
 extern int generate_qrcode_opt_v2(void);
 
+#include "uperf.h" // for doing perf command
+#define DO_PERF true
+
 int main(void)
 {
+#if DO_PERF
+    // Initialize UART
+    *UART_BAUDRATE = 115200;
+    *UART_ENABLE = 1;
+    // Debug: Try reading without checking first
+    // *UART_SEND = 'D';  // Blind write - should work if STATUS not implemented
+    // *UART_SEND = 'E';
+    // *UART_SEND = 'B';
+    // *UART_SEND = 'U';
+    // *UART_SEND = 'G';
+    // *UART_SEND = '\n';
+    
+    // // Now check status - print the actual value
+    // unsigned int status = *UART_STATUS;
+    
+    // // Print status value as hex (manual, no printf)
+    // *UART_SEND = 'S';
+    // *UART_SEND = '=';
+    // const char *hex = "0123456789ABCDEF";
+    // for (int i = 7; i >= 0; i--) {
+    //     *UART_SEND = hex[(status >> (i * 4)) & 0xF];
+    // }
+    // *UART_SEND = '\n';
+    
+    // if ((status & 0x01) == 0) {
+    //     // TX not ready - print error and halt
+    //     *UART_SEND = 'E';
+    //     *UART_SEND = 'R';
+    //     *UART_SEND = 'R';
+    //     *UART_SEND = '\n';
+    //     while(1);  // Halt
+    // }
+    
+    // *UART_SEND = 'O';
+    // *UART_SEND = 'K';
+    // *UART_SEND = '\n';
+    unsigned long long start_cycles = ((unsigned long long)read_mcycleh() << 32) | read_mcycle();
+#endif
     // generate qrcode first
 #if !USE_HARDCODED_DATA
     int ret = 1;
     ret = generate_qrcode_opt_v2();
+    #if DO_PERF
+        unsigned long long end_cycles = ((unsigned long long)read_mcycleh() << 32) | read_mcycle();
+        show_perf_statistic(end_cycles - start_cycles);
+    #endif
     // Write all QR data to memory (bitmap + ASCII)
-    write_qr_data_to_memory(&ctx[0], ret);
+    // write_qr_data_to_memory(&ctx[0], ret);
     if(ret < 0)
         return -1;
 #endif    

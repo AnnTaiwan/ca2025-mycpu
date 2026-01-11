@@ -60,6 +60,17 @@ demo-qrcode: verilator-sdl2
 	@echo ""
 	@echo "✅ Demo complete! You should have seen generated qrcode."
 
+demo-uart_simple_test: verilator-sdl2
+	@echo "QR Starting VGA demo with uart testing..."
+	@echo "   Display: 640×480@72Hz with SDL2 visualization"
+	@echo "   Program: uart_simple_test.asmbin (empty graphic)"
+	@echo "   Note: Frame upload + animation takes significant time"
+	@echo "   Duration: 500M cycles (~5 minutes, includes full animation)"
+	@echo ""
+	cd verilog/verilator/obj_dir && ./VTop -vga -instruction ../../../src/main/resources/uart_simple_test.asmbin -time 500000000
+	@echo ""
+	@echo "✅ Demo complete!"
+
 
 indent:
 	find . -name '*.scala' | xargs scalafmt
