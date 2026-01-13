@@ -32,12 +32,39 @@
 #define DEBUG_REED_SOLOMON false
 // Global definitions (declared as extern in qrcode_data.h)
 qr_ctx ctx[1];
-/* Available Links */
-// const char str[] = "https://github.com/AnnTaiwan/ca2025-mycpu";
-// const char str[] = "https://github.com/sysprog21/rv32emu";
-// const char str[] = "https://www.thonky.com/qr-code-tutorial/";  // Use array instead of pointer to ensure embedding
-// const char str[] = "https://www.youtube.com/watch?v=1pQJkt7-R4Q";  // Use array instead of pointer to ensure embedding
-const char str[] = "https://scanova.io/blog/qr-code-structure/";  // Use array instead of pointer to ensure embedding
+
+/* QR Code Input String Selection
+ * 
+ * Priority:
+ * 1. If QRCODE_INPUT_STRING is defined at compile time (via -DQRCODE_INPUT_STRING="..."),
+ *    use that string (allows make-time customization)
+ * 2. Otherwise, use the default hardcoded string below
+ * 
+ * Usage (from csrc/ directory):
+ *   make qrcode_vga.asmbin QRSTR='"https://your-custom-url.com"'
+ *   
+ * Usage (from parent directory - quotes handled automatically):
+ *   make demo-qrcode QRSTR=https://your-custom-url.com
+ *   make demo-qrcode QRSTR="Text with spaces"
+ *   
+ * Technical Details:
+ *   - csrc/Makefile: Receives QRSTR with quotes, passes as -DQRCODE_INPUT_STRING='$(QRSTR)'
+ *   - Parent Makefile: Auto-wraps QRSTR in quotes via QRSTR='"$(QRSTR)"'
+ *   - Final preprocessor: Gets -DQRCODE_INPUT_STRING="your string"
+ */
+#ifdef QRCODE_INPUT_STRING
+const char str[] = QRCODE_INPUT_STRING;
+#else
+/* Default string - used when QRCODE_INPUT_STRING is not defined */
+const char str[] = "https://github.com/AnnTaiwan/ca2025-mycpu";
+#endif
+
+/* Available Link Examples (for manual testing):
+ * const char str[] = "https://github.com/AnnTaiwan/ca2025-mycpu";
+ * const char str[] = "https://github.com/sysprog21/rv32emu";
+ * const char str[] = "https://www.thonky.com/qr-code-tutorial/";
+ * const char str[] = "https://www.youtube.com/watch?v=1pQJkt7-R4Q";
+ */
 
 /*
  * Get dots for display.
@@ -205,7 +232,43 @@ static void _serialize_data(qr_ctx *ctx, uint8_t *buf)
         buf[i++] = 0;
 }
 
-// #if defined(QR_OPT)
+/*
+ * QR_OPT: Reed-Solomon GF(2^8) multiplication optimization modes
+ * 
+ * Performance Results (generate_qrcode_opt_v2 cycle count):
+ * ┌──────┬─────────────────────┬──────────────┬─────────────────────────┐
+ * │ OPT  │ Implementation      │ Cycle Count  │ Normalized (LUT = 1.0x) │
+ * ├──────┼─────────────────────┼──────────────┼─────────────────────────┤
+ * │  0   │ LUT (Log/Antilog)   │   155,982    │         1.000x          │
+ * │  1   │ Iterative (C)       │   324,927    │         2.083x          │
+ * │  2   │ Iterative (ASM)     │   227,017    │         1.455x          │
+ * └──────┴─────────────────────┴──────────────┴─────────────────────────┘
+ * 
+ * OPT=0 (LUT_C): Lookup Table Method
+ *   - Uses pre-computed log/antilog tables (512 bytes total)
+ *   - Converts multiplication to addition in log space: x*y = 2^(log(x)+log(y))
+ *   - FASTEST: ~2x faster than iterative C, ~1.5x faster than assembly
+ *   - Trade-off: Requires 512 bytes of ROM/flash for lookup tables
+ *   - Best for: Performance-critical applications with available memory
+ * 
+ * OPT=1 (Iter_C): Iterative C Implementation
+ *   - Pure C bitwise multiplication using Galois Field (GF) 2^8 rules
+ *   - No lookup tables, minimal memory footprint
+ *   - SLOWEST: 2.08x slower than LUT due to loop overhead
+ *   - Best for: Memory-constrained systems, educational purposes
+ * 
+ * OPT=2 (Iter_RISC-V): Inline Assembly Optimization
+ *   - Hand-optimized RISC-V assembly with loop unrolling
+ *   - Eliminates C compiler overhead and function call costs
+ *   - MIDDLE GROUND: 1.46x slower than LUT, but 43% faster than C
+ *   - No lookup tables required (0 bytes extra memory)
+ *   - Best for: Balance between performance and memory usage
+ * 
+ * Recommendation:
+ *   - Use OPT=0 for production (fastest, acceptable 512B cost)
+ *   - Use OPT=2 for tight memory constraints
+ *   - Use OPT=1 for portability/debugging only
+ */
 #if QR_OPT == 0
 /*
  * The GF(2^8, 285) finite field element multiplication.

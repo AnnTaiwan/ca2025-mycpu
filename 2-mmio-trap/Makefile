@@ -49,16 +49,31 @@ demo: verilator-sdl2
 	@echo ""
 	@echo "✅ Demo complete! You should have seen animated nyancat."
 
-demo-qrcode: verilator-sdl2
-	@echo "QR Starting VGA demo with qrcode generation..."
+# QR code URL/text customization (quotes added automatically)
+# Usage:
+#   make demo-qrcode                              # Uses default URL
+#   make demo-qrcode QRSTR=https://example.com    # Custom URL (no quotes needed!)
+#   make demo-qrcode QRSTR="Hello World"          # Text with spaces (use quotes)
+# Technical: QRSTR is wrapped in quotes via '"$(QRSTR)"' before passing to csrc/Makefile
+DEFAULT_QRSTR=https://github.com/AnnTaiwan/ca2025-mycpu
+QRSTR ?= $(DEFAULT_QRSTR)
+compile_qrcode: 
+	@if [ "$(QRSTR)" != "$(DEFAULT_QRSTR)" ]; then \
+		echo "🔄 Custom QR string detected, recompiling..."; \
+		$(MAKE) -C csrc clean qrcode_vga.asmbin QRSTR='"$(QRSTR)"' update >/dev/null; \
+	else \
+		echo "✓ Using default QR string, skipping compilation"; \
+	fi
+demo-qrcode: compile_qrcode verilator-sdl2
+	@echo "🔲 Starting VGA demo with QR code generation..."
 	@echo "   Display: 640×480@72Hz with SDL2 visualization"
-	@echo "   Program: qrcode_vga.asmbin (1-frame qrcode graphic)"
+	@echo "   Program: qrcode_vga.asmbin (QR code: $(QRSTR))"
 	@echo "   Note: Frame upload + animation takes significant time"
 	@echo "   Duration: 500M cycles (~5 minutes, includes full animation)"
 	@echo ""
 	cd verilog/verilator/obj_dir && ./VTop -vga -instruction ../../../src/main/resources/qrcode_vga.asmbin -time 500000000
 	@echo ""
-	@echo "✅ Demo complete! You should have seen generated qrcode."
+	@echo "✅ Demo complete! You should have seen generated QR code."
 
 demo-uart_simple_test: verilator-sdl2
 	@echo "QR Starting VGA demo with uart testing..."

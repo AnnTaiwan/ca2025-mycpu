@@ -46,9 +46,13 @@ nyancat.asmbin: nyancat.c nyancat-data.h init_minimal.o
 	$(CROSS_COMPILE)ld -o nyancat.elf -T link.lds $(LDFLAGS) nyancat.o init_minimal.o
 	$(OBJCOPY) -O binary -j .text -j .data nyancat.elf $@
 
+# QR code string configuration (receives quoted string from parent Makefile)
+# When called from parent: make demo-qrcode QRSTR=your-url
+# When called directly: make qrcode_vga.asmbin QRSTR='"your-url"'
+QRSTR ?= "https://github.com/AnnTaiwan/ca2025-mycpu"
 qrcode_vga.asmbin: qrcode_vga.c qrcode_gen.c uperf.c qrcode_data.h uperf.h init_minimal.o
 	$(CC) $(CFLAGS) -c -o uperf.o uperf.c
-	$(CC) $(CFLAGS) -c -o qrcode_gen.o qrcode_gen.c
+	$(CC) $(CFLAGS) -DQRCODE_INPUT_STRING='$(QRSTR)' -c -o qrcode_gen.o qrcode_gen.c
 	$(CC) $(CFLAGS) -c -o qrcode_vga.o qrcode_vga.c
 	$(CROSS_COMPILE)ld -o qrcode_vga.elf -T link.lds $(LDFLAGS) uperf.o qrcode_vga.o qrcode_gen.o init_minimal.o
 	$(OBJCOPY) -O binary -j .text -j .data qrcode_vga.elf $@
