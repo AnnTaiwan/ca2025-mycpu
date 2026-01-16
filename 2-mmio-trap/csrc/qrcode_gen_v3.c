@@ -126,13 +126,14 @@ static void _init_bmp(uint32_t A[], uint size)
 
     /* Alignment pattern for version 2 & 3. */
     if (size > 21) {
-        uint pat = 0x1F << (36 - size);
+        uint shift = 36 - size;
+        uint pat = 0x1F << shift;
         A[size - 9] |= pat;
         A[size - 5] |= pat;
-        pat = 0x11 << (36 - size);
+        pat = 0x11 << shift;
         A[size - 8] |= pat;
         A[size - 6] |= pat;
-        A[size - 7] |= 0x15 << (36 - size);
+        A[size - 7] |= 0x15 << shift;
     }
 }
 
@@ -184,7 +185,7 @@ static bool qr_eval(qr_ctx *ctx, uint ver, const uint8_t *data, uint len)
         return false;
     }
 
-    uint size = ver * 4 + 17;
+    uint size = (ver << 2) + 17;
     ctx->params = (void *) params;
     /* 4b mode, 8b count, 4b terminator. */
     uint usable =
@@ -559,14 +560,32 @@ static void _reed_solomon(qr_ctx *ctx, uint8_t *buf)
     uint deg = _params_hardcoded[offset + 1]; // V3 eccdeg: 15
     uint len = _params_hardcoded[offset] - deg; // V3: 70 - 15
     const uint8_t *gen = &_params_hardcoded[offset + 2];
-    uint8_t *res = buf + len; // residual
+    uint8_t *res = buf + len;
+    
+    /* Circular buffer optimization to avoid expensive shift operations */
+    uint circ_offset = 0;
     for (uint i = 0; i < len; i++) {
-        uint factor = buf[i] ^ res[0];
-        for (uint j = 1; j < deg; j++)
-            res[j - 1] = res[j];
-        res[deg - 1] = 0;
-        for (uint j = 0; j < deg; j++)
-            res[j] ^= _rs_mul(gen[j], factor);
+        uint factor = buf[i] ^ res[circ_offset];
+        res[circ_offset] = 0;
+        
+        /* Apply Reed-Solomon polynomial starting from next position */
+        for (uint j = 0; j < deg; j++) {
+            uint idx = circ_offset + 1 + j;
+            if (idx >= deg) idx -= deg;
+            res[idx] ^= _rs_mul(gen[j], factor);
+        }
+        
+        circ_offset++;
+        if (circ_offset >= deg) circ_offset = 0;
+    }
+    
+    /* Rotate buffer back to start from index 0 */
+    if (circ_offset != 0) {
+        uint8_t temp[15];
+        for (uint i = 0; i < deg; i++)
+            temp[i] = res[(circ_offset + i) >= deg ? (circ_offset + i - deg) : (circ_offset + i)];
+        for (uint i = 0; i < deg; i++)
+            res[i] = temp[i];
     }
 }
 #endif
@@ -644,15 +663,15 @@ static void _place_data(qr_ctx *ctx, const uint8_t *buf)
     uint size_m1 = ctx->size - 1;
     poly64_t xy = {.u0 = size_m1, .u1 = size_m1}; // store the current coordinate where this buf bit data should put
     qr_params *para = (qr_params *) ctx->params;
-    uint nbits = para->capa * 8;
+    uint nbits = para->capa << 3;
 
     /* NB: count in the unused bits in V2 and V3. */
     if (size_m1 > 20)
         nbits += 7;
 
     for (int i = 0; i < nbits; i++) {
-        bool mask0 = (xy.u0 + xy.u1) % 2 == 0;
-        bool dot = buf[i / 8] & (0x80u >> i % 8);
+        bool mask0 = ((xy.u0 + xy.u1) & 1) == 0;
+        bool dot = buf[i >> 3] & (0x80u >> (i & 0x7));
         if (dot ^ mask0) // switch the bit
             ctx->bmp[xy.u1] |= 0x80000000u >> xy.u0;
         xy.bits = zigzag_step(xy.u0, xy.u1, size_m1);
@@ -706,7 +725,7 @@ static uint str_len(const char *s)
         len++;
     return len;
 }
-// v2
+// v3
 int generate_qrcode_opt()
 {
     // const char *str = "https://github.com/sysprog21/rv32emu";

@@ -288,7 +288,9 @@ static inline void delay(uint32_t cycles)
         __asm__ volatile("nop");
 }
 
-extern int generate_qrcode_opt_v2(void);
+// extern int generate_qrcode_opt_v3(void);
+// extern int generate_qrcode_opt_v2(void);
+extern int generate_qrcode_opt(void);
 
 #include "uperf.h" // for doing perf command
 #define DO_PERF true
@@ -336,7 +338,9 @@ int main(void)
     // generate qrcode first
 #if !USE_HARDCODED_DATA
     int ret = 1;
-    ret = generate_qrcode_opt_v2();
+    // ret = generate_qrcode_opt_v3();
+    // ret = generate_qrcode_opt_v2();
+    ret = generate_qrcode_opt();
     #if DO_PERF
         unsigned long long end_cycles = ((unsigned long long)read_mcycleh() << 32) | read_mcycle();
         show_perf_statistic(end_cycles - start_cycles);
