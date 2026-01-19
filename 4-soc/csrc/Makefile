@@ -1,4 +1,5 @@
-CROSS_COMPILE ?= $(HOME)/rv/toolchain/bin/riscv-none-elf-
+# CROSS_COMPILE ?= $(HOME)/rv/toolchain/bin/riscv-none-elf-
+CROSS_COMPILE ?= $(HOME)/riscv-none-elf-gcc/bin/riscv-none-elf-
 
 ASFLAGS = -march=rv32i_zicsr -mabi=ilp32
 # Optimization required: -O2 produces large stack frames that overflow in deep call chains
@@ -12,7 +13,7 @@ LD := $(CROSS_COMPILE)ld
 OBJCOPY := $(CROSS_COMPILE)objcopy
 
 # Program targets (add new programs here)
-PROGRAMS := nyancat uart shell
+PROGRAMS := nyancat uart shell qrcode_vga qrcode_vga_combined
 BINARIES := $(PROGRAMS:%=%.asmbin)
 
 %.asmbin: %.elf
@@ -27,6 +28,12 @@ nyancat.asmbin: nyancat.c nyancat-data.h init.o link.lds
 	$(CC) $(CFLAGS) -DNYANCAT_COMPRESSION_DELTA=$(NYANCAT_COMPRESSION_DELTA) -c -o nyancat.o nyancat.c
 	$(CROSS_COMPILE)ld -o nyancat.elf -T link.lds $(LDFLAGS) nyancat.o init.o
 	$(OBJCOPY) -O binary -j .text -j .data nyancat.elf $@
+
+qrcode_vga.asmbin: qrcode_vga.c qrcode_gen.c qrcode_data.h init.o link.lds
+	$(CC) $(CFLAGS) -c -o qrcode_gen.o qrcode_gen.c
+	$(CC) $(CFLAGS) -c -o qrcode_vga.o qrcode_vga.c
+	$(CROSS_COMPILE)ld -o qrcode_vga.elf -T link.lds $(LDFLAGS) qrcode_vga.o qrcode_gen.o init.o
+	$(OBJCOPY) -O binary -j .text -j .data qrcode_vga.elf $@
 
 uart.asmbin: uart.c mmio.h init.o link.lds
 	$(CC) $(CFLAGS) -c -o uart.o uart.c

@@ -7,6 +7,8 @@ include ../common/build.mk
 
 test:
 	cd .. && sbt "project soc" test
+test-qrcode: # test by chisel test
+	cd .. && sbt "project soc" "testOnly *QRCodeVGATest"
 
 verilator:
 	@if java -version >/dev/null 2>&1; then \
@@ -44,6 +46,28 @@ check-vga: verilator
 	@echo "   - VGA output: 640×480 @ 72Hz"
 	@echo ""
 	cd verilog/verilator/obj_dir && ./VTop -i ../../../csrc/nyancat.asmbin
+	@echo ""
+	@echo "✅ VGA test complete!"
+
+check-qrcode: verilator
+	@echo "🔄 Building qrcode binary..."
+	@$(MAKE) -C csrc clean qrcode_vga.asmbin >/dev/null
+	@echo "🖥️  Running VGA test (qrcode)..."
+	@echo "   - Press ESC or close window to exit"
+	@echo "   - VGA output: 640×480 @ 72Hz"
+	@echo ""
+	cd verilog/verilator/obj_dir && ./VTop -i ../../../csrc/qrcode_vga.asmbin
+	@echo ""
+	@echo "✅ VGA test complete!"
+
+check-qrcode-combined: verilator
+	@echo "🔄 Building combined qrcode binary..."
+	@$(MAKE) -C csrc clean qrcode_vga_combined.asmbin >/dev/null
+	@echo "🖥️  Running VGA test (combined qrcode)..."
+	@echo "   - Press ESC or close window to exit"
+	@echo "   - VGA output: 640×480 @ 72Hz"
+	@echo ""
+	cd verilog/verilator/obj_dir && ./VTop -i ../../../csrc/qrcode_vga_combined.asmbin
 	@echo ""
 	@echo "✅ VGA test complete!"
 
