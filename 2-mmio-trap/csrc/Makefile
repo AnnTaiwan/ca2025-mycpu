@@ -50,9 +50,17 @@ nyancat.asmbin: nyancat.c nyancat-data.h init_minimal.o
 # When called from parent: make demo-qrcode QRSTR=your-url
 # When called directly: make qrcode_vga.asmbin QRSTR='"your-url"'
 QRSTR ?= "https://github.com/AnnTaiwan/ca2025-mycpu"
-# QRCODE_GEN=qrcode_gen
+QV?=3 # Use which qrcode_gen version, only 2 or 3(the best)
+ifeq ($(QV),2)
+QRCODE_GEN=qrcode_gen_v2
+else
 QRCODE_GEN=qrcode_gen_v3
-qrcode_vga.asmbin: qrcode_vga.c $(QRCODE_GEN).c uperf.c qrcode_data.h uperf.h init_minimal.o
+endif
+
+# Empty rules to prevent Make from using built-in rules to compile these files directly
+qrcode_gen_v2 qrcode_gen_v3: ;
+
+qrcode_vga.asmbin: qrcode_vga.c qrcode_gen_v2.c qrcode_gen_v3.c uperf.c qrcode_data.h uperf.h init_minimal.o
 	$(CC) $(CFLAGS) -c -o uperf.o uperf.c
 	$(CC) $(CFLAGS) -DQRCODE_INPUT_STRING='$(QRSTR)' -c -o $(QRCODE_GEN).o $(QRCODE_GEN).c
 	$(CC) $(CFLAGS) -c -o qrcode_vga.o qrcode_vga.c
@@ -95,13 +103,16 @@ update: $(BINS) $(BINARIES)
 clean:
 	$(RM) *.o *.elf *.asmbin init_minimal.S nyancat-data.h
 
-see_qrcode_info: qrcode_vga.c qrcode_gen.c qrcode_data.h
+see_qrcode_info: qrcode_vga.c qrcode_gen_v2.c qrcode_data.h
 	@echo "\nIn qrcode_vga.c"
 	@echo "-----------------------------------------------------------------------------------"
 	@grep --color=always -i -e "#define QRCODE_VGA" -e "#define USE_HARDCODED_DATA" -e "#define DO_PERF" qrcode_vga.c
-	@echo "\nIn qrcode_gen.c"
+	@echo "\nIn qrcode_gen_v2.c"
 	@echo "-----------------------------------------------------------------------------------"
-	@grep --color=always -i -e '^const char str\[\] = \".*\"' -e "#define PARM_SOURCE_TYPE" -e "#define DEBUG_REED_SOLOMON" qrcode_gen.c
+	@grep --color=always -i -e '^const char str\[\] = \".*\"' -e "#define PARM_SOURCE_TYPE" -e "#define DEBUG_REED_SOLOMON" qrcode_gen_v2.c
+	@echo "\nIn qrcode_gen_v3.c"
+	@echo "-----------------------------------------------------------------------------------"
+	@grep --color=always -i -e '^const char str\[\] = \".*\"' -e "#define PARM_SOURCE_TYPE" -e "#define DEBUG_REED_SOLOMON" qrcode_gen_v3.c
 	@echo "\nIn qrcode_data.h"
 	@echo "-----------------------------------------------------------------------------------"
 	@grep --color=always -i -e "#define QR_.*" qrcode_data.h

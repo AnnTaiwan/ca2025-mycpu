@@ -146,43 +146,6 @@ void write_qr_data_to_memory(qr_ctx *ctx, int ret_value)
     // Write completion marker at 0x00000090
     mem32 = (volatile uint32_t *)0x00000090;
     *mem32 = 0xDEADBEEF;
-    
-    // Write ASCII QR code starting at mem[64] (0x100)
-    // volatile char *mem8 = (volatile char *)0x00000100;
-    
-    // // Write top border
-    // for (int i = 0; i < ctx->size + 2; i++) {
-    //     *mem8++ = '#';
-    //     *mem8++ = '#';
-    // }
-    // *mem8++ = '\n';
-    
-    // // Write QR code rows with borders
-    // for (int y = 0; y < ctx->size; y++) {
-    //     *mem8++ = '#';
-    //     *mem8++ = '#';
-    //     for (int x = 0; x < ctx->size; x++) {
-    //         bool is_black = qr_getdot(ctx, x, y);
-    //         if (is_black) {
-    //             *mem8++ = ' ';
-    //             *mem8++ = ' ';
-    //         } else {
-    //             *mem8++ = '#';
-    //             *mem8++ = '#';
-    //         }
-    //     }
-    //     *mem8++ = '#';
-    //     *mem8++ = '#';
-    //     *mem8++ = '\n';
-    // }
-    
-    // // Write bottom border
-    // for (int i = 0; i < ctx->size + 2; i++) {
-    //     *mem8++ = '#';
-    //     *mem8++ = '#';
-    // }
-    // *mem8++ = '\n';
-    // *mem8++ = '\0';
 }
 
 
@@ -288,8 +251,6 @@ static inline void delay(uint32_t cycles)
         __asm__ volatile("nop");
 }
 
-// extern int generate_qrcode_opt_v3(void);
-// extern int generate_qrcode_opt_v2(void);
 extern int generate_qrcode_opt(void);
 
 #include "uperf.h" // for doing perf command
@@ -338,8 +299,6 @@ int main(void)
     // generate qrcode first
 #if !USE_HARDCODED_DATA
     int ret = 1;
-    // ret = generate_qrcode_opt_v3();
-    // ret = generate_qrcode_opt_v2();
     ret = generate_qrcode_opt();
     #if DO_PERF
         unsigned long long end_cycles = ((unsigned long long)read_mcycleh() << 32) | read_mcycle();

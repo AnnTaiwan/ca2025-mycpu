@@ -53,10 +53,10 @@ qr_ctx ctx[1];
  *   - Final preprocessor: Gets -DQRCODE_INPUT_STRING="your string"
  */
 #ifdef QRCODE_INPUT_STRING
-const char str[] = QRCODE_INPUT_STRING;
+const char str[BUFFLEN] = QRCODE_INPUT_STRING; // the maximum capacity for input string is 53 bytes for version3
 #else
 /* Default string - used when QRCODE_INPUT_STRING is not defined */
-const char str[] = "https://github.com/AnnTaiwan/ca2025-mycpu";
+const char str[BUFFLEN] = "https://github.com/AnnTaiwan/ca2025-mycpu";
 #endif
 
 /* Available Link Examples (for manual testing):
@@ -100,7 +100,7 @@ static void _init_bmp(uint32_t A[], uint size)
         A[y] = ((y + 1) & 1) << 25;
 
     /* Version and format string
-    Assume the level is L, and the mask pattern is 0.
+    * Assume the level is L, and the mask pattern is 0.
     * L : `01`
     * Mask pattern 5: `000`
     * First five bits: `01000`
@@ -240,34 +240,39 @@ static void _serialize_data(qr_ctx *ctx, uint8_t *buf)
  * ┌──────┬─────────────────────┬──────────────┬─────────────────────────┐
  * │ OPT  │ Implementation      │ Cycle Count  │ Normalized (LUT = 1.0x) │
  * ├──────┼─────────────────────┼──────────────┼─────────────────────────┤
- * │  0   │ LUT (Log/Antilog)   │   155,982    │         1.000x          │
- * │  1   │ Iterative (C)       │   324,927    │         2.083x          │
- * │  2   │ Iterative (ASM)     │   227,017    │         1.455x          │
+ * │  0   │ LUT (Log/Antilog)   │   155,781    │         1.000x          │
+ * │  1   │ Iterative (C)       │   324,969    │         2.086x          │
+ * │  2   │ Iterative (ASM)     │   199,280    │         1.279x          │
  * └──────┴─────────────────────┴──────────────┴─────────────────────────┘
  * 
- * OPT=0 (LUT_C): Lookup Table Method
+ * Speedup Analysis (relative to baseline OPT=1):
+ *   OPT=0 vs OPT=1: 324969/155781 = 2.086x speedup (51.1% fewer cycles)
+ *   OPT=2 vs OPT=1: 324969/199280 = 1.631x speedup (38.7% fewer cycles)
+ *   OPT=0 vs OPT=2: 199280/155781 = 1.279x speedup (21.8% fewer cycles)
+ * 
+ * OPT=0 (LUT): Lookup Table Method
  *   - Uses pre-computed log/antilog tables (512 bytes total)
  *   - Converts multiplication to addition in log space: x*y = 2^(log(x)+log(y))
- *   - FASTEST: ~2x faster than iterative C, ~1.5x faster than assembly
+ *   - FASTEST: 2.09x faster than C, 1.28x faster than assembly
  *   - Trade-off: Requires 512 bytes of ROM/flash for lookup tables
  *   - Best for: Performance-critical applications with available memory
  * 
- * OPT=1 (Iter_C): Iterative C Implementation
+ * OPT=1 (C): Iterative C Implementation
  *   - Pure C bitwise multiplication using Galois Field (GF) 2^8 rules
  *   - No lookup tables, minimal memory footprint
- *   - SLOWEST: 2.08x slower than LUT due to loop overhead
+ *   - SLOWEST: 2.09x slower than LUT, 1.63x slower than assembly
  *   - Best for: Memory-constrained systems, educational purposes
  * 
- * OPT=2 (Iter_RISC-V): Inline Assembly Optimization
- *   - Hand-optimized RISC-V assembly with loop unrolling
- *   - Eliminates C compiler overhead and function call costs
- *   - MIDDLE GROUND: 1.46x slower than LUT, but 43% faster than C
+ * OPT=2 (ASM): Inline Assembly Optimization
+ *   - Hand-optimized RISC-V assembly with branchless conditionals
+ *   - Eliminates C compiler overhead and reduces branch penalties
+ *   - MIDDLE GROUND: 1.28x slower than LUT, 1.63x faster than C
  *   - No lookup tables required (0 bytes extra memory)
  *   - Best for: Balance between performance and memory usage
  * 
  * Recommendation:
- *   - Use OPT=0 for production (fastest, acceptable 512B cost)
- *   - Use OPT=2 for tight memory constraints
+ *   - Use OPT=0 for production (fastest, 512B overhead acceptable)
+ *   - Use OPT=2 for tight memory constraints (no tables, 63% faster than C)
  *   - Use OPT=1 for portability/debugging only
  */
 #if QR_OPT == 0
@@ -366,32 +371,25 @@ static inline uint _rs_mul(uint x, uint y)
         "mv t6, %1\n"             /* Save x in t6 */
         
         ".Lloop:\n"
-        "  slli a2, t0, 1\n"      /* a2 = z << 1 */
+        "  slli t0, t0, 1\n"      /* t0 = z << 1 */
         
         /* Calculate (z >> 7) * 0x11D without mul_loop
-            0x11D = 0b100011101, 1 at position 0,2,3,4,8 
-            So, calculate the a3 << 2,3,4,8 and sum them.
+            (Optional, poor performance) 
+            If doing shift-and-add multiplication (* 0x11D):
+                0x11D = 0b100011101, 1 at position 0,2,3,4,8 
+                So, calculate the a3 << 2,3,4,8 and sum them.
+            Since (z >> 7) is either 0 or 1 for 8-bit values:
+                - If (z >> 7) == 0: z = (z << 1)
+                - If (z >> 7) == 1: z = (z << 1) ^ 0x11D
         */
-        "  srli a3, t0, 7\n"      /* a3 = z >> 7 */
-        "  beqz a3, .Lskip_mul\n" /* if (z >> 7) == 0, skip multiplication */
-        "  mv a4, a3\n"           /* a4 = a3 (bit 0) */
-        "  slli t3, a3, 2\n"      /* t3 = a3 << 2 (bit 2) */
-        "  add a4, a4, t3\n"
-        "  slli t3, a3, 3\n"      /* t3 = a3 << 3 (bit 3) */
-        "  add a4, a4, t3\n"
-        "  slli t3, a3, 4\n"      /* t3 = a3 << 4 (bit 4) */
-        "  add a4, a4, t3\n"
-        "  slli t3, a3, 8\n"      /* t3 = a3 << 8 (bit 8) */
-        "  add a4, a4, t3\n"      /* a4 = (z >> 7) * 0x11D */
-        "  xor t0, a2, a4\n"      /* z = (z << 1) ^ ((z >> 7) * 0x11D) */
-        "  j .Lmul_end\n"
-        ".Lskip_mul:\n"
-        "  mv t0, a2\n"             /* let t0 be (z << 1)*/
-        ".Lmul_end:\n"
+        "  srli a3, t0, 8\n"      /* a3 = z >> 7, here shift right 8 due to t0 already shifts left 1 before */
+        "  beqz a3, .Lnext\n"     /* if (z >> 7) == 0, skip multiplication, and then go to next equation */
+        "  xori t0, t0, 0x11D\n"  /* if (z >> 7) == 1, z = (z << 1) ^ 0x11D*/
         /* Calculate ((y >> i) & 1) * x 
             (y >> i) & 1 must be 1 or 0, so it is simple to do this multiplication
             Just check if it is 1, if true, do the xor.
         */
+        ".Lnext:\n"
         "  srl a4, %2, t1\n"      /* a4 = y >> i */
         "  andi a4, a4, 1\n"      /* a4 = (y >> i) & 1 */
         
@@ -404,7 +402,7 @@ static inline uint _rs_mul(uint x, uint y)
         "  mv %0, t0\n"            /* return z */
         : "=r"(result)             /* Output: result */
         : "r"(x), "r"(y)           /* Inputs: x, y */
-        : "t0", "t1", "t3", "t6", "a2", "a3", "a4"  /* Clobbered: Remind those registers will be modified */
+        : "t0", "t1", "t6", "a3", "a4"  /* Clobbered: Remind those registers will be modified */
     );
     return result;
 }
@@ -691,32 +689,6 @@ static void qr_encode(qr_ctx *ctx)
     _reed_solomon(ctx, dbuf);
     _place_data(ctx, dbuf);
 }
-/*
-static void dump_bmp(qr_ctx *ctx)
-{
-    for (int i = 0; i < ctx->size + 2; i++)
-        TEST_LOGGER("██");
-    TEST_LOGGER("\n");
-
-    for (int y = 0; y < ctx->size; y++) {
-        TEST_LOGGER("██");
-        for (int x = 0; x < ctx->size; x++)
-            if (qr_getdot(ctx, x, y))
-            {
-                TEST_LOGGER("  "); // black
-            }
-            else
-            {
-                TEST_LOGGER("██"); // white
-            }
-        TEST_LOGGER("██\n");
-    }
-    for (int i = 0; i < ctx->size + 2; i++)
-        TEST_LOGGER("██");
-    TEST_LOGGER("\n");
-}
-*/
-
 // String length helper function
 static uint str_len(const char *s)
 {
@@ -728,16 +700,10 @@ static uint str_len(const char *s)
 // v3
 int generate_qrcode_opt()
 {
-    // const char *str = "https://github.com/sysprog21/rv32emu";
-    // const char *str = "ffffffffffffffffffffffffffffffffff";
-    // const char *str = "https://www.youtube.com/watch?v=x1v2tX4_dkQ";
-
     if (!qr_eval(ctx, /* version */ QR_VERSION, (const uint8_t *) str, str_len(str))) {
         // printf("Evaluation failed. Version invalid or data too long?\n");
         return -2;
     }
     qr_encode(ctx);
-    // dump_bmp(ctx);
     return 0;
 }
-

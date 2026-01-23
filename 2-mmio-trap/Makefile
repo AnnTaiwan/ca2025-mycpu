@@ -56,11 +56,12 @@ demo: verilator-sdl2
 #   make demo-qrcode QRSTR="Hello World"          # Text with spaces (use quotes)
 # Technical: QRSTR is wrapped in quotes via '"$(QRSTR)"' before passing to csrc/Makefile
 DEFAULT_QRSTR=https://github.com/AnnTaiwan/ca2025-mycpu
+QV?=3 # Use which qrcode_gen version, only 2 or 3(the best)
 QRSTR ?= $(DEFAULT_QRSTR)
 compile_qrcode: 
 	@if [ "$(QRSTR)" != "$(DEFAULT_QRSTR)" ]; then \
 		echo "🔄 Custom QR string detected, recompiling..."; \
-		$(MAKE) -C csrc clean qrcode_vga.asmbin QRSTR='"$(QRSTR)"' update >/dev/null; \
+		$(MAKE) -C csrc clean qrcode_vga.asmbin QRSTR='"$(QRSTR)"' QV=$(QV) update >/dev/null; \
 	else \
 		echo "✓ Using default QR string, skipping compilation"; \
 	fi

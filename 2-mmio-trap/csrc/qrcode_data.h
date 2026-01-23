@@ -1,6 +1,6 @@
 #ifndef QRCODE_DATA_H
 #define QRCODE_DATA_H
-
+#define BUFFLEN 60 // input string capacity, use fixed number to prevent wrong input data when running.
 #define QR_VERSION 3
 #define QR_OPT 2
 
@@ -19,7 +19,7 @@ typedef struct qr_ctx {
 extern qr_ctx ctx[1];
 
 // encode string
-extern const char str[];
+extern const char str[BUFFLEN];
 
 // Hardcoded QR bitmap data (29 lines for version 3)
 static const uint32_t hardcoded_qr_bitmap[29] = {

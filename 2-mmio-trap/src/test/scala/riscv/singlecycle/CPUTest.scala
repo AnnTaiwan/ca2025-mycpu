@@ -316,7 +316,7 @@ class QRCodeVGATest extends AnyFlatSpec with ChiselScalatestTester {
       c.clock.step()
       c.io.mem_debug_read_data.expect(0xDEADBEEFL.U, "Completion marker should be 0xDEADBEEF")
       
-      // 5. Debug: Read deg, len, capa, and gen from memory
+      // 5. Debug: Read deg, len, capa, and gen from memory. Used when `DEBUG_REED_SOLOMON=true` in qrcode_gen_v*.c
       println("\n========== Reed-Solomon Debug Info (0x200) ===========")
       c.io.mem_debug_read_address.poke(0x200.U)
       c.clock.step()
@@ -420,24 +420,5 @@ class QRCodeVGATest extends AnyFlatSpec with ChiselScalatestTester {
       }
       println("=============================================")
     }
-      // 7. ASCII QR code at mem[64] onwards
-    //   println("\n========== ASCII QR Code ==========")
-    //   val asciiStart = 0x100
-    //   var shouldBreak = false
-    //   for (i <- 0 until 3845 by 4 if !shouldBreak) {
-    //     c.io.mem_debug_read_address.poke((asciiStart + i).U)
-    //     c.clock.step()
-    //     val word = c.io.mem_debug_read_data.peekInt().toInt
-    //     for (j <- 0 until 4 if !shouldBreak) {
-    //       val ch = ((word >> (j * 8)) & 0xFF).toChar
-    //       if (ch == '\u0000') {
-    //         shouldBreak = true
-    //       } else {
-    //         print(ch)
-    //       }
-    //     }
-    //   }
-    //   println("\n===================================")
-    // }
   }
 }
