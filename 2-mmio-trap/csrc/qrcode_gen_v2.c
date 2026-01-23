@@ -2,7 +2,11 @@
  * QR123: minimal fast QR encoder for version 1, 2, 3.
  *
  * Copyright (c) 2019 Ling LI <lix2ng@gmail.com>.
+ * Copyright (c) 2026 An Chou <ann20021007@gmail.com>.
  *
+ * Modified by An Chou, 2026:
+ * - Optimized _rs_mul into RV32I assembly code.
+ * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
